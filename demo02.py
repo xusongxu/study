@@ -1,165 +1,243 @@
-menu = ['1.添加新书', '2.修改书柜', '3.删除书柜', '4.查询书架', '5.退出系统']
-books = {'侠客风云传': {'id': 1, 'price': 100}, '金庸群侠转': {'id': 2, 'price': 200}, '射雕英雄传': {'id': 3, 'price': 300},
-         '倚天屠龙记': {'id': 4, 'price': 400}, '鹿鼎记': {'id': 5, 'price': 500}}
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
+r'''
+learning.py
 
-def choose(*args, func='nothing'):
-    # 判断选择菜单的情况
-    if func == 'caidan':
-        choosenum = input('\n\n请选择一个功能：')
+A Python 3 tutorial from https://www.liaoxuefeng.com
 
-        # 添加新书
-        if choosenum == '1':
-            bookname = input('\n请输入书的名称：')
-            # 判断书名存在，则返回菜单列表
-            if ifexist(bookname=bookname):
-                print('有这本书了，不用瞎折腾了！\n')
-                return choose()
+Usage:
 
-            # 判断书的id存在，换一个书柜，或者选择0退出
-            bookid = input('\n请输入放入的书柜：')
-            while True:
-                if ifexist(bookid=bookid):
-                    bookid = int(input('\n这个书柜被占用了，换一个书柜放吧，按0退出！'))
-                    if bookid == 0:
-                        return choose()
-                    else:
-                        continue
-                else:
-                    break
+$ python3 learning.py
+'''
 
-            bookprice = int(input('\n请输入新书的价格：'))
-            newbook = {'id': bookid, 'price': bookprice}
-            newboos(bookname, **newbook)
-        # 修改书
-        elif choosenum == '2':
-            updatebook(bookname=input('\n\n请输入你想要修改的书名：\n\n'))
+# check #######################################################################
 
-        # 删除书架
-        elif choosenum == '3':
-            bookname = input('\n\n请输入您需要删除的书名：\n\n')
-            deletebook(bookname=bookname)
-        # 查询书架
-        elif choosenum == '4':
-            showboos(**books)
-        # 退出系统
-        elif choosenum == '5':
-            print('\n\n退出系统成功，欢迎下次光临!\n\n')
-            pass
-        # 输入异常
+import sys
+from datetime import datetime
+
+CERT_EXPIRES = '2020-08-07'
+
+def check_version():
+    v = sys.version_info
+    if v.major == 3 and v.minor >= 6:
+        return
+    print('Your current python is %d.%d. Please use Python 3.6.' % (v.major, v.minor))
+    exit(1)
+
+def check_cert():
+    today = datetime.now().strftime('%Y-%m-%d')
+    if today >= CERT_EXPIRES:
+        print('This learning.py is expired. Please download a newer version.')
+        exit(1)
+
+check_version()
+check_cert()
+
+# start server ################################################################
+
+import os, io, json, subprocess, tempfile, ssl
+from urllib import parse
+from http.server import HTTPServer, BaseHTTPRequestHandler, SimpleHTTPRequestHandler
+
+EXEC = sys.executable
+PORT = 39093
+TEMP = tempfile.mkdtemp(suffix='_py', prefix='learn_python_')
+
+HTML_INDEX = r'''
+<html>
+  <head><title>Learning Python</title></head>
+  <body>
+    <form method="post" action="/run">
+      <textarea name="code" style="width:90%;height: 600px"></textarea>
+      <p><button type="submit">Run</button></p>
+    </form>
+  </body>
+</html>
+'''
+
+class LearningHTTPRequestHandler(BaseHTTPRequestHandler):
+
+    def do_GET(self):
+        self.close_connection = True
+        if self.path != '/':
+            return self.send_error(404)
+        self._sendHttpHeader('text/html')
+        self._sendHttpBody(HTML_INDEX)
+
+    def do_POST(self):
+        self.close_connection = True
+        if self.path != '/run':
+            return self.send_error(400)
+        print('Prepare code...')
+        body = self.rfile.read(int(self.headers['Content-length']))
+        qs = parse.parse_qs(body.decode('utf-8'))
+        if not 'code' in qs:
+            return self.send_error(400)
+        code = qs['code'][0]
+        r = dict()
+        try:
+            fpath = write_py(get_name(), code)
+            print('Execute: %s %s' % (EXEC, fpath))
+            r['output'] = decode(subprocess.check_output([EXEC, fpath], stderr=subprocess.STDOUT, timeout=5))
+        except subprocess.CalledProcessError as e:
+            r = dict(error='Exception', output=decode(e.output))
+        except subprocess.TimeoutExpired as e:
+            r = dict(error='Timeout', output='执行超时')
+        except subprocess.CalledProcessError as e:
+            r = dict(error='Error', output='执行错误')
+        print('Execute done.')
+        self._sendHttpHeader()
+        self._sendHttpBody(r)
+
+    def _sendHttpHeader(self, contentType='application/json'):
+        origin = self.headers['Origin'] or 'https://www.liaoxuefeng.com'
+        self.send_response(200)
+        self.send_header('Content-Type', contentType)
+        self.send_header('Access-Control-Allow-Origin', origin)
+        self.send_header('Access-Control-Allow-Methods', 'GET,POST')
+        self.send_header('Access-Control-Max-Age', '86400')
+        self.end_headers()
+
+    def _sendHttpBody(self, data):
+        body = b''
+        if isinstance(data, bytes):
+            body = data
+        elif isinstance(data, str):
+            body = data.encode('utf-8', errors='ignore')
         else:
-            if isinstance(choosenum, str):
-                raise TypeError('输入参数错误')
-            else:
-                return
+            body = json.dumps(data).encode('utf-8', errors='ignore')
+        self.wfile.write(body)
 
-    # 判断选择的是通用情况
-    elif func == 'nothing':
-        input('\n 请按任意键+回车继续')
-        domenu(*menu)
+def main():
+    certfile = write_cert()
+    httpd = HTTPServer(('127.0.0.1', PORT), LearningHTTPRequestHandler)
+    httpd.socket = ssl.wrap_socket(httpd.socket, certfile=certfile, server_side=True)
+    print('Ready for Python code on port %d...' % PORT)
+    print('Press Ctrl + C to exit...')
+    httpd.serve_forever()
 
-    else:
-        pass
+# functions ###################################################################
 
+INDEX = 0
 
-# 判断是否存在书名或者书的id
-def ifexist(*args, bookname='', bookid=''):
-    # 判断传入的是书名还是 id
-    if bookname != '':
-        # 检查是否存在同样的书并返回，存在返回True，不存在返回False
-        if bookname in books:
-            return True
-        else:
-            return False
+def get_name():
+    global INDEX
+    INDEX = INDEX + 1
+    return 'test_%d' % INDEX
 
-    else:
-        # 遍历books，检查是否存在相同的id，存在返回true,不存在返回false
-        for x in books:
-            if int(bookid) == books[x]['id']:
-                return True
-        return False
+def write_py(name, code):
+    fpath = os.path.join(TEMP, '%s.py' % name)
+    with open(fpath, 'w', encoding='utf-8') as f:
+        f.write(code)
+    print('Code wrote to: %s' % fpath)
+    return fpath
 
+def decode(s):
+    try:
+        return s.decode('utf-8')
+    except UnicodeDecodeError:
+        return s.decode('gbk')
 
-# 系统启动  +  菜单展示
-def domenu(*args):
-    print('''
-        //////////////////////////////////////
-        ///////  欢迎使用图书管理系统  ///////
-        //////////////////////////////////////
+# certificate #################################################################
 
+def write_cert():
+    fpath = os.path.join(TEMP, 'local.liaoxuefeng.com.pem')
+    with open(fpath, 'w', encoding='utf-8') as f:
+        f.write(CERT_DATA)
+    return fpath
 
-    ''')
-    print('               ******************')
-    for x in args:
-        print('               **  %s  **\n' % x)
-    print('               ******************')
-    choose(func='caidan')
+CERT_DATA = r'''
+-----BEGIN RSA PRIVATE KEY-----
+MIIEpAIBAAKCAQEArUtX5vRI7RsCBEN8sIPskQyLJhsXzxQ947dcH2so0uuCYodm
+wkuKwMtjCvP5nnM2PRaJMSD3ke4OA2BdD+CWGFmoXdD8yJbAOh6da4boOi2Rh174
+YlZLcpGBhbqprXlRC1Ip0jzW38y4dOW9m9L1QEALoHZ6vJG1sYouLEfPLubI9+bg
+VO1WipHBebuT4OosivsJxBhNqe1dR7rCkCjV1v/iBmbJCujrH9rri12LmksL0HhW
+7V5mccae07mao0tfu1esFeLqYWM7+heQ82qXwg1WfbztXWJkP088fPjFGWSAVcZS
+9RzPEt/lC34If15AqSEr60zKDkQ1olU36YHO+wIDAQABAoIBAAGuaJ4VLPyelaCX
+S7HmDcOt1KRxgIPMpU8SG9gy23S0aTxDJl7oibeWIZIHzO+vHCMalrPTJzkTZK++
+sxhw1t6fRrq7nirktN0Q0qPU7WgxwfwyEoSDDtH/5xBLlSgu3veWUVE4sDhVTaLW
+Cca7FLsOBAQyB2h7R2vUtImkcWD57c4kDH90hN8htl+KFhMrBctiRbzvcB2tk/xO
+e46YJ1GSRQg3OQQGQJeDczAoGzsv20pYuvDmqlhrQC64Zxxz7nZfftbCztvuVoPj
+RGLRm/wRXPjujqBXivePanxYLP4dUOa6/NK7J5uea41e3CHIPTk1id4G15Knkypv
+vQcJ2/kCgYEA3LAwxc/+DR3uwbcM5ZWeFK+16LfR+fF/ZNtm2vHuN458ZpcbBELO
+rhUmye30LE0wwSPgPtjkXQ2r2BZD9fzji2jIGaWtsSvigjhMGRWOhVtlfB5kBNx+
+Kk3PjunOId+HodVvOQxxXWbljiLQCNG3di7r+7ojcsj+ruos7iBSZ5kCgYEAyQXO
+rLx9WP+xoCu3OV1PD5LFcvb/x9R3xMzEsZGYh/s969bNHkPvT/4BFcMBVv8X0WdE
+kY04YJd3m1XzmOXeTR7XSZhG0sekYRbnEl8aWyMTmuhtjXwPHYReTx9ZEl3oRTfY
+lubd51QPnArwGD+E9+1i2uCNjbFiDOv/+Tedt7MCgYEAjfLeTD5OoM1CB2PgbcPg
+3Flw3nFuJCCL2qms7ON0YFPL/IjxHbqDCkIcowHlbqFv3Ktgz8veh2QFxoX7zLuO
++Nq66pRAtpcNqMjhWbkd5PU2v7EkkGPq2vcVrE0DA5KtwRBx6/Xu7S8ENHp76VBL
+ez8PFulRZ8GU35lMsRYlKvECgYEAl1tRBwyREK7NTj08IuwXuDEZi/tgEVTvrPVE
+8DIg99n7AJTmMnCSQteMd5cxbhB6HYg0v6bmGQxS2Vm5JZmGbOjYzqfiQ5hgM14s
+M8/5pz9c5pk0y3/qXZ4p6EdBKKweU+e9o7lGwYOwkRxHNOq2snpBoW3MBzDVE8eq
+Hzp5/TMCgYAomXNpRtHcXt2VhJR0FefYOfj4n4cGAtg8/dNlJSzkhR6ad2KniCz1
+KgedQRAsqRSh0UZgTTxPA5Y/zpAvmAHFB7fr9syWb1QSBBvgLWkzpUgaEEJBRjwu
+s2urAziMIcPf+mZf9rFscD/JKYQo3fHSd/UWTSM0SkQNu7uHqcgN8g==
+-----END RSA PRIVATE KEY-----
+-----BEGIN CERTIFICATE-----
+MIIFkjCCBHqgAwIBAgIQAt7xtFqJsgRZGvKRMyO9njANBgkqhkiG9w0BAQsFADBy
+MQswCQYDVQQGEwJDTjElMCMGA1UEChMcVHJ1c3RBc2lhIFRlY2hub2xvZ2llcywg
+SW5jLjEdMBsGA1UECxMURG9tYWluIFZhbGlkYXRlZCBTU0wxHTAbBgNVBAMTFFRy
+dXN0QXNpYSBUTFMgUlNBIENBMB4XDTE5MDYwOTAwMDAwMFoXDTIwMDgwNzEyMDAw
+MFowIDEeMBwGA1UEAxMVbG9jYWwubGlhb3h1ZWZlbmcuY29tMIIBIjANBgkqhkiG
+9w0BAQEFAAOCAQ8AMIIBCgKCAQEArUtX5vRI7RsCBEN8sIPskQyLJhsXzxQ947dc
+H2so0uuCYodmwkuKwMtjCvP5nnM2PRaJMSD3ke4OA2BdD+CWGFmoXdD8yJbAOh6d
+a4boOi2Rh174YlZLcpGBhbqprXlRC1Ip0jzW38y4dOW9m9L1QEALoHZ6vJG1sYou
+LEfPLubI9+bgVO1WipHBebuT4OosivsJxBhNqe1dR7rCkCjV1v/iBmbJCujrH9rr
+i12LmksL0HhW7V5mccae07mao0tfu1esFeLqYWM7+heQ82qXwg1WfbztXWJkP088
+fPjFGWSAVcZS9RzPEt/lC34If15AqSEr60zKDkQ1olU36YHO+wIDAQABo4ICdDCC
+AnAwHwYDVR0jBBgwFoAUf9OZ86BHDjEAVlYijrfMnt3KAYowHQYDVR0OBBYEFOe3
+Dec5wHbk5Hf8h6l2DDHgHxHhMCAGA1UdEQQZMBeCFWxvY2FsLmxpYW94dWVmZW5n
+LmNvbTAOBgNVHQ8BAf8EBAMCBaAwHQYDVR0lBBYwFAYIKwYBBQUHAwEGCCsGAQUF
+BwMCMEwGA1UdIARFMEMwNwYJYIZIAYb9bAECMCowKAYIKwYBBQUHAgEWHGh0dHBz
+Oi8vd3d3LmRpZ2ljZXJ0LmNvbS9DUFMwCAYGZ4EMAQIBMH0GCCsGAQUFBwEBBHEw
+bzAhBggrBgEFBQcwAYYVaHR0cDovL29jc3AuZGNvY3NwLmNuMEoGCCsGAQUFBzAC
+hj5odHRwOi8vY2FjZXJ0cy5kaWdpdGFsY2VydHZhbGlkYXRpb24uY29tL1RydXN0
+QXNpYVRMU1JTQUNBLmNydDAJBgNVHRMEAjAAMIIBAwYKKwYBBAHWeQIEAgSB9ASB
+8QDvAHUApLkJkLQYWBSHuxOizGdwCjw1mAT5G9+443fNDsgN3BAAAAFrOiI+ygAA
+BAMARjBEAiAGlx0z2YTgQMyVva5eRZTnry0rUjPGCXWP1Y4/XgpO9wIgSBtIfCjH
+GC+xLuvUOEQZAfnh6xoDFJ6urTk/tdkJ/BYAdgCHdb/nWXz4jEOZX73zbv9WjUdW
+Nv9KtWDBtOr/XqCDDwAAAWs6Ij+WAAAEAwBHMEUCIQDNqJG+8r5IwXDOLHyfUkg8
+XpkaMYjncE5mSMLwyprt1gIgLAilaTtP0zlar11n3LTVhz/XG8o5kUoFIgps/cDS
+PN0wDQYJKoZIhvcNAQELBQADggEBAEPFPqZE03u06PZ9jMpoke4CXHF3iTBABuTA
+//g6w7Pn/DlMuHs5OS2S4RXQs5QJfdLpS7TsYatYmfhDO+b13QuBM/09BFh+KXsJ
+ITbS9omy8eB/IK+OGCIJwoj1psoU4tw/MO2sly5N8rgJgYytD1U0+BbDIhWY1jlK
+lP3rTkV1OkoGfPFzjjqk5VIiNdGXqn/aeXMbycbyyyDGwhLmqMARWLiDvQLywwzu
+cGxJS4s+oP4SIYVH+sfyG51fRSTIyqzI8tP1MNuPi1R6r88NijyQ+f/tQs8R3OB+
+AHcthgqp6TI5qsN89vJzqD4NTBBrCcyU1PshW5rAjJelnJlmfIU=
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+MIIErjCCA5agAwIBAgIQBYAmfwbylVM0jhwYWl7uLjANBgkqhkiG9w0BAQsFADBh
+MQswCQYDVQQGEwJVUzEVMBMGA1UEChMMRGlnaUNlcnQgSW5jMRkwFwYDVQQLExB3
+d3cuZGlnaWNlcnQuY29tMSAwHgYDVQQDExdEaWdpQ2VydCBHbG9iYWwgUm9vdCBD
+QTAeFw0xNzEyMDgxMjI4MjZaFw0yNzEyMDgxMjI4MjZaMHIxCzAJBgNVBAYTAkNO
+MSUwIwYDVQQKExxUcnVzdEFzaWEgVGVjaG5vbG9naWVzLCBJbmMuMR0wGwYDVQQL
+ExREb21haW4gVmFsaWRhdGVkIFNTTDEdMBsGA1UEAxMUVHJ1c3RBc2lhIFRMUyBS
+U0EgQ0EwggEiMA0GCSqGSIb3DQEBAQUAA4IBDwAwggEKAoIBAQCgWa9X+ph+wAm8
+Yh1Fk1MjKbQ5QwBOOKVaZR/OfCh+F6f93u7vZHGcUU/lvVGgUQnbzJhR1UV2epJa
+e+m7cxnXIKdD0/VS9btAgwJszGFvwoqXeaCqFoP71wPmXjjUwLT70+qvX4hdyYfO
+JcjeTz5QKtg8zQwxaK9x4JT9CoOmoVdVhEBAiD3DwR5fFgOHDwwGxdJWVBvktnoA
+zjdTLXDdbSVC5jZ0u8oq9BiTDv7jAlsB5F8aZgvSZDOQeFrwaOTbKWSEInEhnchK
+ZTD1dz6aBlk1xGEI5PZWAnVAba/ofH33ktymaTDsE6xRDnW97pDkimCRak6CEbfe
+3dXw6OV5AgMBAAGjggFPMIIBSzAdBgNVHQ4EFgQUf9OZ86BHDjEAVlYijrfMnt3K
+AYowHwYDVR0jBBgwFoAUA95QNVbRTLtm8KPiGxvDl7I90VUwDgYDVR0PAQH/BAQD
+AgGGMB0GA1UdJQQWMBQGCCsGAQUFBwMBBggrBgEFBQcDAjASBgNVHRMBAf8ECDAG
+AQH/AgEAMDQGCCsGAQUFBwEBBCgwJjAkBggrBgEFBQcwAYYYaHR0cDovL29jc3Au
+ZGlnaWNlcnQuY29tMEIGA1UdHwQ7MDkwN6A1oDOGMWh0dHA6Ly9jcmwzLmRpZ2lj
+ZXJ0LmNvbS9EaWdpQ2VydEdsb2JhbFJvb3RDQS5jcmwwTAYDVR0gBEUwQzA3Bglg
+hkgBhv1sAQIwKjAoBggrBgEFBQcCARYcaHR0cHM6Ly93d3cuZGlnaWNlcnQuY29t
+L0NQUzAIBgZngQwBAgEwDQYJKoZIhvcNAQELBQADggEBAK3dVOj5dlv4MzK2i233
+lDYvyJ3slFY2X2HKTYGte8nbK6i5/fsDImMYihAkp6VaNY/en8WZ5qcrQPVLuJrJ
+DSXT04NnMeZOQDUoj/NHAmdfCBB/h1bZ5OGK6Sf1h5Yx/5wR4f3TUoPgGlnU7EuP
+ISLNdMRiDrXntcImDAiRvkh5GJuH4YCVE6XEntqaNIgGkRwxKSgnU3Id3iuFbW9F
+UQ9Qqtb1GX91AJ7i4153TikGgYCdwYkBURD8gSVe8OAco6IfZOYt/TEwii1Ivi1C
+qnuUlWpsF1LdQNIdfbW3TSe0BhQa7ifbVIfvPWHYOu3rkg1ZeMo6XRU9B4n5VyJY
+RmE=
+-----END CERTIFICATE-----
+'''
 
+# start main at last ##########################################################
 
-# 展示书柜列表
-def showboos(**kw):
-    print('''
-    /////////////////////////////////////////////////////////////
-    /////////////////////图书列表////////////////////////////////
-    /////////////////////////////////////////////////////////////
-    '''
-          )
-    for x in kw:
-        print('     ////《%s》   --->   第 %2d 个书柜中   ---> 价格 %d 元' % (x, books[x]['id'], float(books[x]['price'])))
-
-    print('''
-    /////////////////////////////////////////////////////////////
-    '''
-          )
-    choose()
-
-
-# 添加新书
-def newboos(bookname, **kw):
-    # 将新书存入书架
-    books[bookname] = kw
-    print('\n添加成功了！\n')
-    return showboos(**books)
-
-
-# 删除书
-def deletebook(*args, bookname):
-    if ifexist(bookname=bookname):
-        books.pop(bookname)
-        print('\n\n《%s》已删除！\n\n' % bookname)
-        return choose()
-    else:
-        print('\n\n老铁，没有这本书啊\n')
-        return choose()
-
-
-# 修改书
-def updatebook(*args, bookname):
-    if ifexist(bookname=bookname):
-        choosenum = int(input('\n\n想改什么？ 1:书柜号  2:价格  3:其它按键退出'))
-        # 改书柜号
-        if choosenum == 1:
-            while True:
-                newnum = int(input('\n\n你想将书放在第几个书柜？\n\n'))
-                if ifexist(bookid=newnum):
-                    print('\n\n此书柜已经被其它书占用了！\n')
-                    x = input('按1选择其它书柜，按其它按键退出修改\n')
-                    if x == '1':
-                        continue
-                    else:
-                        return choose()
-                else:
-                    books[bookname]['id'] = newnum
-                    print('\n\n《%s》已经成功移动到第%d个书柜了！\n\n' % (bookname, newnum))
-                    return showboos(**books)
-        elif choosenum == 2:
-            newprice = int(input('\n\n请输入《%s》新的价格：' % bookname))
-            books[bookname]['price'] = newprice
-            print('\n\n《%s》以经将价格修改为%d' % (bookname, newprice))
-            return showboos(**books)
-    else:
-        print('\n\n并没有这个书，你再想想？？\n\n')
-        return choose()
-
-
-domenu(*menu)
+if __name__ == '__main__':
+    main()
