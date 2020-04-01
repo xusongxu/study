@@ -1,0 +1,32 @@
+python实现杨辉三角形
+代码实现：
+
+# python实现杨辉三角形
+def yanghui():
+    # 定义第一行列表为[1]
+    line = [1]
+    while True:
+        # yield的作用：把一个函数变成生成器，同时返回一个list，下次从yield的下条语句执行
+        yield line
+        # 设上一个为[1],通过式子可得[1,1],继而[1,2,1]......
+        line = [1] + [line[i] + line[i + 1] for i in range(len(line) - 1)] + [1]
+
+# 输入杨辉三角形的行数
+n = int(input("请输入行数："))
+# 定义一个结束的变量
+flag = 0
+# 生成器可迭代，做个遍历
+for i in yanghui():
+    # 打印每行的列表的元素，用空格连接
+    print(" ".join(str(j) for j in i))
+    # 打印完一行，flag+1
+    flag += 1
+    # 如果变量flag等于输入的行数，跳出for循环
+    if flag == n:
+        # 跳出循环
+        break
+
+效果：
+请输入行数：611 11 2 11 3 3 11 4 6 4 11 5 10 10 5 1
+Process finished with exit code 0
+
