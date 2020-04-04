@@ -1576,11 +1576,13 @@ print("业精于勤而荒于嬉，勤劳一日，可得一日安眠；勤劳一�
 # # 调用f，打印1,2,4，0,1,4
 # f(3,[1,2,4])
 
-# # py面试：把123456789变成987654321
-# # 考查切片知识，倒叙每一个数
+# py面试：把123456789变成987654321
+# 考查切片知识，倒叙每一个数
+# a=(1,2,3,4,5,6,7,8,9)
 # a="123456789"
-# b=a[:-1]
+# b=a[::-1]
 # print(b)
+
 #
 # # python面试：简述re模块match() search()findall() compile()
 # # 导入re模块
@@ -2196,7 +2198,7 @@ print("业精于勤而荒于嬉，勤劳一日，可得一日安眠；勤劳一�
 # s=[i*i for i in l]
 # # 打印列表s
 # print(s)
-# # []用于创建一个生成器，结果依次返回列表l的元素的平方，返回generator
+# # ()用于创建一个生成器，结果依次返回列表l的元素的平方，返回generator
 # s1=(i*i for i in l)
 # # 以列表形式打印generator的元素值
 # print(list(s1))
@@ -2678,6 +2680,81 @@ print("业精于勤而荒于嬉，勤劳一日，可得一日安眠；勤劳一�
 #     return x+y
 # # 效果就是（（（（（1+2）+3）+4）+5）+6）=21
 # print(functools.reduce(add,[1,2,3,4,5,6]))
+
+'''title_pattern = r'(<a.*id="cb_post_title_url".*>)(.*)(</a>)'
+# <class 'str'>
+print(type(title_pattern))'''
+
+'''# 导入numpy模块
+import numpy
+# 创建ndarray对象，用来存放多维数组
+a=numpy.array(([1,2,3], [4,5,6], [7, 8, 9]))
+print(a)
+# <class 'numpy.ndarray'>
+print(type(a))
+# 数组元素的数据类型为float
+b=numpy.array(([1,2,3],[4,5,6],[7,8,9]),dtype=float)
+print(b)
+# 生成最小的维度2
+c=numpy.array(([1,2,3],[4,5,6],[7,8,9]),ndmin=2)
+print(c)'''
+# C:\Users\ADMINI~1\AppData\Local\Temp\wkhtmltox-0.12.5-1.mxe-cross-win64
+
+"""# *args用来将参数打包成tuple给函数体调用
+def func(*args):
+    print(args,type(args))
+func()
+
+# *args用来将参数打包成tuple给函数体调用
+def func02(x,y,*args):
+    print(x,y,args,type(args))
+func02(1,2,3,4,5,6)
+
+# **kwargs打包关键字参数成dict给函数体调用
+def func03(**kwargs):
+    print(kwargs,type(kwargs))
+func03(a=3)
+
+def func04(arg,*args,**kwargs):
+    print(arg,args,kwargs)
+func04(1,2,3,4,5,a=6,b=7,c=8)"""
+
+"""a={'Abc','Hello','APPLE',18}
+b=[i.lower() for i in a if type(i)==str]
+print(b)"""
+
+"""a=list(map(lambda x:x*x,(1,2,3)))
+print(a)"""
+
+# 定义装饰器函数
+def log(func):
+    """
+    接受一个函数作为参数，并返回一个函数
+    :param func:
+    :return:
+    """
+    def wrapper(*args,**kwargs):
+        """
+        :param args:
+        :param kwargs:
+        :return:
+        """
+        print("call %s():"% func.__name__)
+        return func(*args,**kwargs)
+    return wrapper
+
+@log
+def now():
+    print(time.strftime("%Y-%m-%d %H:%M:%S",time.localtime()))
+now()
+
+
+
+
+a=[1,2,3,4,5,6,7,8,9]
+b=a[-1:-10:-1]
+print(b)
+
 
 
 
